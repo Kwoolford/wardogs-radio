@@ -12,7 +12,7 @@ A small always-on-top Windows GUI built on **SteelSeries Sonar**'s Streamer mode
 - **"Join mid-broadcast".** Starts long station uploads at a random point, like tuning in to a radio in GTA.
 - **Car-radio sound.** An optional band-pass and compressor filter.
 - **Music ON AIR** toggle and volume (what others hear), and **Hear radio in my headset** toggle and volume (what you hear). These are independent, so you can broadcast the radio while listening to something else.
-- **Spotify ON AIR.** Moves Spotify into your mic for song requests, and back again.
+- **Spotify ON AIR** for song requests. Spotify gets its own lane, with separate "on-air" and "in my headset" sliders. Keep Spotify's own volume at **100%** and set the levels in the GUI: Sonar can only turn a source down, so a quiet Spotify means a quiet broadcast.
 - **My voice in game.** Turn it off and the game gets music only, while you talk on Discord.
 - **K toggles proximity mic.** Tap K to go live and tap again to stop. This only applies while the WARDOGS window is focused. You get beeps and a LIVE indicator.
 - **Global hotkeys (Ctrl+Alt+…).** R music on-air, H headset, V voice, N next station, X play/stop, S Spotify.
