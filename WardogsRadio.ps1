@@ -161,6 +161,8 @@ function Get-StreamerMediaVolumes {
         OnAirMuted = [bool]$v.devices.media.stream.streaming.muted
         Mine       = [double]$v.devices.media.stream.monitoring.volume
         MineMuted  = [bool]$v.devices.media.stream.monitoring.muted
+        SpotOnAir  = [double]$v.devices.aux.stream.streaming.volume
+        SpotMine   = [double]$v.devices.aux.stream.monitoring.volume
     }
 }
 function Set-StreamerVolume([string]$mix, [string]$channel, [double]$vol) {
@@ -172,39 +174,28 @@ function Set-StreamerMute([string]$mix, [string]$channel, [bool]$muted) {
 }
 
 # ---------------- Spotify ----------------
-# Spotify gets its own lane: the Aux channel. Aux is always in your headset (personal mix) and is added to
-# the stream mix only while Spotify is ON AIR - independent of the radio's Media on-air / headset toggles.
+# Spotify lives on its own lane, the Aux channel, whether on air or not. Aux is always in your headset
+# (its personal-mix slider = "Spotify in my headset"); ON AIR just adds Aux to the stream mix.
+# Keep Spotify's own volume at 100% - Sonar can only turn a source down, so a quiet Spotify = quiet broadcast.
 function Set-SpotifyOnAir([bool]$onAir) {
-    $sessions = @(Get-AppSessions 'Spotify')
-    if (-not $sessions) { throw 'No Spotify audio session yet - press play in Spotify first.' }
-    # Sonar keeps old sessions around; only these are sensible "home" channels for Spotify
-    # ('stream' would feed the mic directly, 'none' is a raw device, 'media'/'aux' are on-air lanes)
-    $homeRoles = @('game', 'chatRender')
-    $st = Get-State
-    $pids = @($sessions | Select-Object -ExpandProperty pid -Unique)
-    if ($onAir) {
-        $orig = ($sessions | Where-Object { $_.role -in $homeRoles } | Sort-Object { $_.state -ne 'active' } | Select-Object -First 1).role
-        if ($orig) { Set-StateValue 'spotifyRole' $orig }
-        foreach ($p in $pids) { Set-AppRole $p 'aux' }
-        Invoke-Sonar 'streamRedirections/monitoring/redirections/aux/isEnabled/true' 'Put' | Out-Null
-        Invoke-Sonar 'streamRedirections/streaming/redirections/aux/isEnabled/true' 'Put' | Out-Null
-        Set-StreamerMute 'streaming' 'aux' $false
-        Set-StreamerMute 'monitoring' 'aux' $false
-        Set-StateValue 'spotifyOnAir' $true
-        Write-Log 'Spotify is ON AIR (your headset + mic).'
-    } else {
-        Invoke-Sonar 'streamRedirections/streaming/redirections/aux/isEnabled/false' 'Put' | Out-Null
-        $back = if ($st.spotifyRole -in $homeRoles) { $st.spotifyRole } else { 'game' }
-        foreach ($p in $pids) { Set-AppRole $p $back }
-        Set-StateValue 'spotifyOnAir' $false
-        Write-Log "Spotify is private again ($back channel)."
-    }
+    Confirm-SpotifyRoute -Required
+    Invoke-Sonar 'streamRedirections/monitoring/redirections/aux/isEnabled/true' 'Put' | Out-Null
+    Invoke-Sonar "streamRedirections/streaming/redirections/aux/isEnabled/$(B $onAir)" 'Put' | Out-Null
+    if ($onAir) { Set-StreamerMute 'streaming' 'aux' $false }
+    Set-StateValue 'spotifyOnAir' $onAir
+    Write-Log $(if ($onAir) { 'Spotify is ON AIR (your headset + mic).' } else { 'Spotify is private (headset only).' })
 }
 
-# Spotify can reopen its audio stream (new device, restart); keep it on Aux while it's on air
-function Confirm-SpotifyRoute {
-    $active = @(Get-AppSessions 'Spotify' | Where-Object state -eq 'active')
-    foreach ($s in ($active | Where-Object role -ne 'aux')) { Set-AppRole $s.pid 'aux' }
+# Put Spotify on Aux. Spotify can reopen its audio stream (new device, restart), so this runs every few seconds.
+function Confirm-SpotifyRoute([switch]$Required) {
+    $sessions = @(Get-AppSessions 'Spotify')
+    if (-not $sessions) {
+        if ($Required) { throw 'No Spotify audio session yet - press play in Spotify first.' }
+        return
+    }
+    $active = @($sessions | Where-Object state -eq 'active')
+    if ($Required -and -not $active) { $active = $sessions }   # paused: route its process anyway
+    foreach ($p in @($active | Where-Object role -ne 'aux' | Select-Object -ExpandProperty pid -Unique)) { Set-AppRole $p 'aux' }
 }
 
 # ---------------- WARDOGS mic (ini) ----------------
@@ -489,7 +480,15 @@ $sMine = New-Slider $M $y $W; $y += 50
 
 $chkSpotify = New-Chk 'Spotify ON AIR (song requests)' $M $y $W
 $chkSpotify.ForeColor = $accent; $chkSpotify.Font = $bold
-$y += 28
+$y += 26
+# Keep Spotify's own volume at 100% and set levels here: Sonar can only turn a source down, never up.
+$half = [int](($W - 12) / 2)
+New-Lbl 'Spotify on-air volume' $M $y $half | Out-Null
+New-Lbl 'Spotify in my headset' ($M + $half + 12) $y $half | Out-Null
+$y += 20
+$sSpotAir  = New-Slider $M $y $half
+$sSpotMine = New-Slider ($M + $half + 12) $y $half
+$y += 50
 $chkVoice = New-Chk 'My voice in game (off = game gets music only)' $M $y $W
 $chkVoice.Checked = $true; $chkVoice.ForeColor = $accent; $chkVoice.Font = $bold
 $y += 28
@@ -532,6 +531,7 @@ function Refresh-Sonar {
             $v = Get-StreamerMediaVolumes
             $script:Loading = $true
             $sOnAir.Value = [Math]::Round($v.OnAir * 100); $sMine.Value = [Math]::Round($v.Mine * 100)
+            $sSpotAir.Value = [Math]::Round($v.SpotOnAir * 100); $sSpotMine.Value = [Math]::Round($v.SpotMine * 100)
             $chkOnAir.Checked = -not $v.OnAirMuted
             $chkHear.Checked = -not $v.MineMuted
             $sm = @(Invoke-Sonar 'streamRedirections') | Where-Object streamRedirectionId -eq 'streaming'
@@ -567,9 +567,13 @@ $chkVoice.Add_CheckedChanged({ if (-not $script:Loading) { Try-Do {
     Invoke-Sonar "streamRedirections/streaming/redirections/chatCapture/isEnabled/$(B $chkVoice.Checked)" 'Put' | Out-Null
     Write-Log $(if ($chkVoice.Checked) { 'Your voice is in the game mic.' } else { 'Game mic = music only (voice stays in Discord).' }) } } })
 $chkHear.Add_CheckedChanged({ if (-not $script:Loading) { Try-Do { Set-StreamerMute 'monitoring' 'media' (-not $chkHear.Checked); Write-Log $(if ($chkHear.Checked) { 'Radio in your headset.' } else { 'Radio muted for you (still on air for others).' }) } } })
-# the on-air slider sets both lanes: radio (Media) and Spotify (Aux)
-$sOnAir.Add_MouseUp({ Try-Do { Set-StreamerVolume 'streaming' 'media' ($sOnAir.Value / 100); Set-StreamerVolume 'streaming' 'aux' ($sOnAir.Value / 100) } })
-$sOnAir.Add_KeyUp({ Try-Do { Set-StreamerVolume 'streaming' 'media' ($sOnAir.Value / 100); Set-StreamerVolume 'streaming' 'aux' ($sOnAir.Value / 100) } })
+$sOnAir.Add_MouseUp({ Try-Do { Set-StreamerVolume 'streaming' 'media' ($sOnAir.Value / 100) } })
+$sOnAir.Add_KeyUp({ Try-Do { Set-StreamerVolume 'streaming' 'media' ($sOnAir.Value / 100) } })
+# Spotify lane (Aux): on-air level and your own listening level, independent of the radio
+$sSpotAir.Add_MouseUp({ Try-Do { Set-StreamerVolume 'streaming' 'aux' ($sSpotAir.Value / 100) } })
+$sSpotAir.Add_KeyUp({ Try-Do { Set-StreamerVolume 'streaming' 'aux' ($sSpotAir.Value / 100) } })
+$sSpotMine.Add_MouseUp({ Try-Do { Set-StreamerVolume 'monitoring' 'aux' ($sSpotMine.Value / 100) } })
+$sSpotMine.Add_KeyUp({ Try-Do { Set-StreamerVolume 'monitoring' 'aux' ($sSpotMine.Value / 100) } })
 $sMine.Add_MouseUp({ Try-Do { Set-StreamerVolume 'monitoring' 'media' ($sMine.Value / 100) } })
 $sMine.Add_KeyUp({ Try-Do { Set-StreamerVolume 'monitoring' 'media' ($sMine.Value / 100) } })
 $chkSpotify.Add_CheckedChanged({
@@ -645,7 +649,7 @@ $timer.Add_Tick({
             } catch {}
         }
     }
-    if ($chkSpotify.Checked -and ($script:RouteTick % 5) -eq 3) { try { Confirm-SpotifyRoute } catch {} }
+    if (($script:RouteTick % 5) -eq 3) { try { Confirm-SpotifyRoute } catch {} }   # Spotify always lives on Aux
     # follow the game: check every 5 s, close after ~15 s without it (survives a quick restart)
     if ($FollowGame -and ((++$script:Ticks) % 5 -eq 0)) {
         if (Get-Process -Name 'Wardogs*' -ErrorAction SilentlyContinue) { $script:GoneFor = 0 }
