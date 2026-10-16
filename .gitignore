@@ -1,0 +1,3 @@
+# per-machine state and logs
+state.json
+*.log

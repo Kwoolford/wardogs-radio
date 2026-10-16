@@ -1,0 +1,9 @@
+[
+  { "name": "Non-Stop-Pop FM (GTA V)",      "type": "youtube", "source": "ytsearch1:Non-Stop-Pop FM GTA V full radio station" },
+  { "name": "Los Santos Rock Radio (GTA V)", "type": "youtube", "source": "ytsearch1:Los Santos Rock Radio GTA V full radio station" },
+  { "name": "West Coast Classics (GTA V)",  "type": "youtube", "source": "ytsearch1:West Coast Classics GTA V full radio station" },
+  { "name": "Radio Mirror Park (GTA V)",    "type": "youtube", "source": "ytsearch1:Radio Mirror Park GTA V full radio station" },
+  { "name": "Channel X (GTA V)",            "type": "youtube", "source": "ytsearch1:Channel X GTA V full radio station" },
+  { "name": "SomaFM Underground 80s (live)", "type": "stream", "source": "https://ice1.somafm.com/u80s-128-mp3" },
+  { "name": "SomaFM Groove Salad (live)",   "type": "stream",  "source": "https://ice1.somafm.com/groovesalad-128-mp3" }
+]
